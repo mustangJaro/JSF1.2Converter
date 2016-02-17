@@ -14,6 +14,7 @@
 			<h:message id="errors1" for="lastName" style="color:red" />
 		</p>
 		<h:form>
+			<%@ include file="/mainMenu.jsp" %>
 			<h:outputText value="First Name"></h:outputText>
 			<h:inputText id="firstName" value="#{helloWorldBean.firstName}"
 				required="true">

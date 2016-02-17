@@ -16,16 +16,33 @@ public class JSFParserHandler implements ParserHandler {
 
 	@Override
 	public void startElement(Element el) {
-		if(el.getTagType().equals(JspParser.TAG_TYPE.JSP)){			
-			String prefix = "";
-			String value = "";
-			for(Attribute attr : el.getAttrs()){
-				if(attr.getName().equals("prefix"))
-					prefix = attr.getValue();
-				else if(attr.getName().equals("uri"))
-					value = attr.getValue();
+		if(el.getTagType().equals(JspParser.TAG_TYPE.JSP)){	
+			switch(el.getqName().toUpperCase()){
+			case "TAGLIB":
+				String prefix = "";
+				String value = "";
+				for(Attribute attr : el.getAttrs()){
+					if(attr.getName().equals("prefix"))
+						prefix = attr.getValue();
+					else if(attr.getName().equals("uri"))
+						value = attr.getValue();
+				}
+				uris.put(prefix, value);
+				break;
+			case "INCLUDE":
+				print("<ui:include ");
+				if(el.getAttrs() != null){
+					for(Attribute attr : el.getAttrs()){
+						if(attr.getName().equalsIgnoreCase("file")){
+							print("src=\"" + attr.getValue() + "\"");
+						}
+					}
+				}else{
+					//TODO log warning that there are no attributes for this include
+				}
+				print("/>");
+				break;
 			}
-			uris.put(prefix, value);
 		}else{
 			switch(el.getqName().toUpperCase()){
 			case "HTML":
