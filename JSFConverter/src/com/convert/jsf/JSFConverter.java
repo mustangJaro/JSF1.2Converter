@@ -15,7 +15,8 @@ public class JSFConverter {
 	
 	public void convert(){
 		JspParser parser = new JspParser();
-		ParserHandler handler = new JSFParserHandler();
+		JSFParserHandler handler = new JSFParserHandler();
+		handler.setIncludeRichFacesConversion(true);
 		File jsf12 = new File("HelloWorld.jsp");
 		try {
 			parser.parse(jsf12, handler);
