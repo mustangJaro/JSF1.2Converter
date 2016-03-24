@@ -21,7 +21,7 @@ public class JSFConverter {
 		JspParser parser = new JspParser();
 		JSFParserHandler handler = new JSFParserHandler();
 		handler.setOutputDir(new File("c:\\xhtml"));
-		handler.setIncludeRichFacesConversion(true);
+		handler.setIncludePrimeFacesConversion(true);
 		File jsf12 = new File("C:\\workspace\\Version93 - JSF2\\CustomCallPortal\\www\\home.jsp");
 		try {
 			parser.parse(jsf12, handler);

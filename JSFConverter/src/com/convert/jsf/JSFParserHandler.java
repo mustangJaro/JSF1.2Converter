@@ -22,12 +22,21 @@ public class JSFParserHandler implements ParserHandler {
 	
 	private Map<String, String> uris = new HashMap<String, String>();
 	private boolean includeRichFacesConversion = false;
+	private boolean includePrimeFacesConversion = false;
 	private boolean gotFirstTag = false;
+	private boolean gotHeadTag = false;
+	private boolean gotFirstStatus = false;
 	private File outputDir;
 	private BufferedWriter output;
 	
 	@Override
 	public void startFile(String filename){
+		gotHeadTag = false;
+		gotFirstTag = false;
+		gotFirstStatus = false;
+		uris = new HashMap<String, String>();
+		
+		
 		String xhtmlFile = filename.replace(".jsp", ".xhtml");
 		File file = new File(outputDir.getAbsolutePath() + "\\" + xhtmlFile);
 		try {
@@ -37,6 +46,33 @@ public class JSFParserHandler implements ParserHandler {
 			logger.error("Failure creating file", e);
 		}
 		logger.debug("====================Start of file: " + filename + "====================");
+	}
+	
+	public void printHTMLStarter(){
+		print("<!DOCTYPE html>\n");
+		print("<html lang=\"en\" \n"
+				+ "     xmlns=\"http://www.w3.org/1999/xhtml\"\n"
+				+ "     xmlns:c=\"http://java.sun.com/jsp/jstl/core\"\n");
+		
+		for(String key : uris.keySet()){
+			if(!key.equalsIgnoreCase("c")){
+				if(includePrimeFacesConversion){
+					//remove a4j reference and convert rich reference to 'p'
+					if(!key.equalsIgnoreCase("a4j")){
+						if(key.equalsIgnoreCase("rich")){
+							print("     xmlns:p=\"http://primefaces.org/ui\"\n");							
+						}else{
+							print("     xmlns:" + key + "=\"" + uris.get(key) + "\"\n");							
+						}
+					}
+				}else{
+					print("     xmlns:" + key + "=\"" + uris.get(key) + "\"\n");
+				}
+			}
+		}
+		
+		print("     xmlns:ui=\"http://java.sun.com/jsf/facelets\">");
+		
 	}
 
 	@Override
@@ -64,76 +100,81 @@ public class JSFParserHandler implements ParserHandler {
 			break;
 		case DOCTYPE:
 			break;
+		case SCRIPT:
+			if(el.getAttrs() != null){
+				boolean foundJavaScriptType = false;
+				for(Attribute attr : el.getAttrs()){
+					if(attr.getName().equalsIgnoreCase("type") && attr.getValue().contains("javascript")){
+						foundJavaScriptType = true;
+						break;
+					}
+				}
+				if(foundJavaScriptType){
+					print(el.toString());
+					print("//<![CDATA[");
+				}
+			}else{
+				print(el.toString());	
+			}
+			break;
 		default:
 			switch(el.getqName().toUpperCase()){
 			case "HTML":
-				print("<!DOCTYPE html>\n");
-				print("<html lang=\"en\" \n"
-						+ "     xmlns=\"http://www.w3.org/1999/xhtml\"\n");
-				
-				for(String key : uris.keySet()){
-					print("     xmlns:" + key + "=\"" + uris.get(key) + "\"\n");
-				}
-				
-				print("     xmlns:ui=\"http://java.sun.com/jsf/facelets\">");
+				printHTMLStarter();
 				break;
 			case "HEAD":
 				String result = el.toString().replaceAll("head", "h:head");
 				print(result);
+				gotHeadTag = true;
 				break;
 			default:
 				if(!gotFirstTag){
-					print("<!DOCTYPE html>\n");
-					print("<html lang=\"en\" \n"
-							+ "     xmlns=\"http://www.w3.org/1999/xhtml\"\n");
-					
-					for(String key : uris.keySet()){
-						print("     xmlns:" + key + "=\"" + uris.get(key) + "\"\n");
-					}
-					
-					print("     xmlns:ui=\"http://java.sun.com/jsf/facelets\">\n");
-					
+					printHTMLStarter();
 					gotFirstTag = true;
 				}
 				
 				//RichFaces specific conversion changes go here
 				if(includeRichFacesConversion){
 					switch(el.getqName().toUpperCase()){
+					case "RICH:COLUMNS":
+						print("<c:forEach ");
+						printAttrsAndEnd(el);
+						break;
 					case "RICH:MODALPANEL":
 						print("<rich:popupPanel modal=\"true\"");
-						printRichFacesAttrsAndEnd(el);
+						printAttrsAndEnd(el);
 						break;
 					case "RICH:SIMPLETOGGLEPANEL":
 						print("<rich:collapsiblePanel");
-						printRichFacesAttrsAndEnd(el);
+						printAttrsAndEnd(el);
 						break;
 					case "RICH:TOOLTIP":
 						//case changed on this one
 						print("<rich:tooltip");
-						printRichFacesAttrsAndEnd(el);
+						printAttrsAndEnd(el);
 						break;
 					case "RICH:DATALIST":
 						print("<rich:list ");
-						printRichFacesAttrsAndEnd(el);
+						printAttrsAndEnd(el);
 						break;
 					case "RICH:DATASCROLLER":
 						//case changed on this one
 						print("<rich:dataScroller ");
-						printRichFacesAttrsAndEnd(el);
+						printAttrsAndEnd(el);
 						break;
 					case "RICH:SUBTABLE":
 						print("<rich:collapsibleSubTable ");
-						printRichFacesAttrsAndEnd(el);
+						printAttrsAndEnd(el);
 						break;
 					case "A4J:ACTIONPARAM":
 						print("<a4j:param");
-						printRichFacesAttrsAndEnd(el);
+						printAttrsAndEnd(el);
 						break;
 					case "A4J:SUPPORT":
 						print("<a4j:ajax");
-						printRichFacesAttrsAndEnd(el);
+						printAttrsAndEnd(el);
 
-						logger.warn("Line: " + el.getLineNumber() + " The tag is changed to <a4j:ajax> and must be validated: " + el.toString());
+						logger.warn("Line: " + el.getLineNumber() + " The open tag is changed to <a4j:ajax> and must be validated: " + el.toString());
 						/*
 						 * 	
 							Implemented as a behavior according to JSF specification. So
@@ -154,7 +195,7 @@ public class JSFParserHandler implements ParserHandler {
 						break;
 					case "A4J:HTMLCOMMANDLINK":
 						print("<a4j:commandLink ");
-						printRichFacesAttrsAndEnd(el);						
+						printAttrsAndEnd(el);						
 					case "A4J:FORM":
 					case "A4J:AJAXLISTENER":
 					case "RICH:SPACER":
@@ -168,7 +209,89 @@ public class JSFParserHandler implements ParserHandler {
 						}else{
 							print(el.getqName());
 						}
-						printRichFacesAttrsAndEnd(el);
+						printAttrsAndEnd(el);
+					}
+				}else if(includePrimeFacesConversion){			
+					
+					switch(el.getqName().toUpperCase()){
+					case "A4J:JSFUNCTION":
+						print("<p:remoteCommand ");
+						printAttrsAndEnd(el);
+						break;
+					case "RICH:MODALPANEL":
+						print("<p:dialog modal=\"true\" ");
+						printAttrsAndEnd(el);
+						break;		
+					case "A4J:REGION":
+					case "A4J:ACTIONPARAM":
+					case "RICH:COMPONENTCONTROL":
+						logger.warn("Line: " + el.getLineNumber() + " The open tag is removed and must be validated: " + el.toString());
+						break;
+					case "A4J:SUPPORT":
+						print("<p:ajax ");
+						printAttrsAndEnd(el);
+						break;
+					case "A4J:INCLUDE":
+						printUIInclude(el, "viewId");
+						if(el.isOpenedAndClosed())
+							print("/");
+						print(">");
+						break;				
+					case "A4J:FORM":
+						logger.warn("Line: " + el.getLineNumber() + " Changed a4j:form to h:form and it must be validated: " + el.toString());
+						print("<h:form ");
+						printAttrsAndEnd(el);
+						break;
+					case "RICH:MESSAGES":
+						print("<h:messages ");
+						printAttrsAndEnd(el);
+						break;
+					case "A4J:STATUS":
+						if(!gotFirstStatus){
+							print("<p:ajaxStatus ");
+							printAttrsAndEnd(el);
+						}else{
+							logger.warn("Line: " + el.getLineNumber() + " Removed additional a4j:status since only one is allowed (blockUI is alternative): " + el.toString());							
+						}
+						break;
+					case "RICH:PANEL":
+						print("<p:outputPanel ");
+						printAttrsAndEnd(el);
+						break;
+					case "A4J:HTMLCOMMANDLINK":
+						print("<p:commandLink ");
+						printAttrsAndEnd(el);
+						break;
+					case "RICH:DATASCROLLER":
+						logger.warn("Line: " + el.getLineNumber() + " The open tag is removed and recommend to add pagination attribute to dataTable: " + el.toString());						
+						break;
+					case "RICH:SUGGESTIONBOX":
+						print("<p:autoComplete ");
+						printAttrsAndEnd(el);
+						break;
+					case "RICH:SIMPLETOGGLEPANEL":
+						print("<p:accordionPanel>\n<p:tab ");
+						printAttrsAndEnd(el);
+						break;
+					case "RICH:TABPANEL":
+						print("<p:tabView ");
+						printAttrsAndEnd(el);
+						break;
+					default:
+						if(el.getqName().startsWith("rich:")){
+							el.setqName(el.getqName().replaceFirst("rich:", "p:"));
+						}else if(el.getqName().startsWith("a4j:")){
+							el.setqName(el.getqName().replaceFirst("a4j:", "p:"));
+						}
+						
+						print("<");
+						if(el.getTagType().equals(TAG_TYPE.COMMENT)){
+							print("!--");
+							print(el.getqName().replace("--", ""));
+						}else{
+							print(el.getqName());
+						}
+						printAttrsAndEnd(el);
 					}
 				}else
 					print(el.toString());				
@@ -187,10 +310,17 @@ public class JSFParserHandler implements ParserHandler {
 			case "HEAD":
 				print("</h:head>");
 				break;
+			case "SCRIPT":
+				print("//]]>\n");
+				print("</" + el.getqName() + ">");
+				break;
 			default:
 				//RichFaces specific conversion changes go here
 				if(includeRichFacesConversion){
 					switch(el.getqName().toUpperCase()){
+					case "RICH:COLUMNS":
+						print("</c:forEach>");
+						break;
 					case "RICH:MODALPANEL":
 						print("</rich:popupPanel>");
 						break;
@@ -226,9 +356,68 @@ public class JSFParserHandler implements ParserHandler {
 					case "A4J:FORM":
 					case "A4J:AJAXLISTENER":
 					case "RICH:SPACER":
-						logger.warn("Line: " + el.getLineNumber() + " The tag was removed: " + el.toString());
+						logger.warn("Line: " + el.getLineNumber() + " The close tag was removed: " + el.toString());
 						break;
 					default:
+						print("</" + el.getqName() + ">");
+					}
+				}else if(includePrimeFacesConversion){			
+					
+					switch(el.getqName().toUpperCase()){
+					case "A4J:JSFUNCTION":
+						print("</p:remoteCommand>");
+						break;
+					case "RICH:MODALPANEL":
+						print("</p:dialog>");
+						break;		
+					case "A4J:REGION":
+					case "A4J:ACTIONPARAM":
+					case "RICH:COMPONENTCONTROL":
+						logger.warn("Line: " + el.getLineNumber() + " The close tag is removed and must be validated: " + el.toString());
+						break;
+					case "A4J:SUPPORT":
+						print("</p:ajax>");
+						break;
+					case "A4J:INCLUDE":
+						print("</ui:include>");
+						break;
+					case "A4J:FORM":
+						print("</h:form>");
+						break;
+					case "RICH:MESSAGES":
+						print("</h:messages>");
+						break;
+					case "A4J:STATUS":
+						if(!gotFirstStatus){
+							gotFirstStatus = true;
+							print("</p:ajaxStatus>");
+						}
+						break;
+					case "RICH:PANEL":
+						print("</p:outputPanel>");
+						break;
+					case "A4J:HTMLCOMMANDLINK":
+						print("</p:commandLink>");
+						break;
+					case "RICH:DATASCROLLER":
+						logger.warn("Line: " + el.getLineNumber() + " The close tag is removed: " + el.toString());						
+						break;
+					case "RICH:SUGGESTIONBOX":
+						print("</p:autoComplete>");
+						break;
+					case "RICH:SIMPLETOGGLEPANEL":
+						print("</p:tab>\n</p:accordionPanel>");
+						break;
+					case "RICH:TABPANEL":
+						print("</p:tabView>");
+						break;
+					default:
+						if(el.getqName().startsWith("rich:")){
+							el.setqName(el.getqName().replaceFirst("rich:", "p:"));
+						}else if(el.getqName().startsWith("a4j:")){
+							el.setqName(el.getqName().replaceFirst("a4j:", "p:"));
+						}
+
 						print("</" + el.getqName() + ">");
 					}
 				}else
@@ -268,6 +457,14 @@ public class JSFParserHandler implements ParserHandler {
 		this.includeRichFacesConversion = includeRichFacesConversion;
 	}
 	
+	public boolean isIncludePrimeFacesConversion() {
+		return includePrimeFacesConversion;
+	}
+
+	public void setIncludePrimeFacesConversion(boolean includePrimeFacesConversion) {
+		this.includePrimeFacesConversion = includePrimeFacesConversion;
+	}
+
 	private void print(String s){
 //		System.out.print(s);
 		
@@ -317,14 +514,16 @@ public class JSFParserHandler implements ParserHandler {
 	}
 	
 	/**
-	 * Print all of the tag attributes and close out the tag.  Calls {@link #convertRichFacesAttribute(Element, Attribute)}
+	 * Print all of the tag attributes and close out the tag.  Calls the {@link #convertAttribute(Element, Attribute)}
+	 * method
 	 * 
 	 * @param el
 	 */
-	private void printRichFacesAttrsAndEnd(Element el){
+	private void printAttrsAndEnd(Element el){
 		if(el.getAttrs() != null){
 			for(Attribute attr : el.getAttrs()){
-				Attribute convAttr = convertRichFacesAttribute(el, attr);
+				Attribute convAttr = convertAttribute(el, attr);
+				
 				if(convAttr != null)
 					print(" " + convAttr.getName() + "=\"" + convAttr.getValue() + "\"");
 			}
@@ -334,6 +533,37 @@ public class JSFParserHandler implements ParserHandler {
 		else if(el.isOpenedAndClosed())
 			print("/");
 		print(">");		
+	}
+	
+	/**
+	 * Convert generic JSP attributes to their new values.<br/><br/>
+	 * 
+	 * Calls the {@link #convertRichFacesAttribute(Element, Attribute)} or {@link #convertPrimeFacesAttribute(Element, Attribute)}
+	 * depending on which boolean is set
+	 * 
+	 * @param el
+	 * @param attr
+	 * @return
+	 */
+	private Attribute convertAttribute(Element el, Attribute attr){
+		switch(attr.getName().toUpperCase()){
+
+		case "HREF":
+			if(el.getqName().equalsIgnoreCase("a") && attr.getValue().contains("<%=")){
+				String attrVal = attr.getValue();
+				if(attrVal.endsWith(".jsf"))
+					attrVal = attrVal.replace(".jsf", ".xhtml");
+				attr.setValue("#{request.contextPath}" + attrVal.substring(attrVal.indexOf("%>")+2));
+			}
+			break;
+		}
+		
+		if(includeRichFacesConversion)
+			return convertRichFacesAttribute(el, attr);
+		else if(includePrimeFacesConversion)
+			return convertPrimeFacesAttribute(el, attr);
+		else
+			return attr;
 	}
 	
 	/**
@@ -368,14 +598,6 @@ public class JSFParserHandler implements ParserHandler {
 				attr = null;
 			}
 			break;
-		case "HREF":
-			if(el.getqName().equalsIgnoreCase("a") && attr.getValue().contains("<%=")){
-				String attrVal = attr.getValue();
-				if(attrVal.endsWith(".jsf"))
-					attrVal = attrVal.replace(".jsf", ".xhtml");
-				attr.setValue("#{request.contextPath}" + attrVal.substring(attrVal.indexOf("%>")+2));
-			}
-			break;
 		case "DIRECTION":
 			if(el.getqName().equalsIgnoreCase("rich:tooltip")){
 				String attrVal = attr.getValue();
@@ -403,8 +625,22 @@ public class JSFParserHandler implements ParserHandler {
 				if(attr.getValue().contains("||"))
 					attr.setValue(attr.getValue().replace("||", "or"));
 			}
+		case "INDEX":
+			if(el.getqName().equalsIgnoreCase("RICH:COLUMNS")){
+				logger.warn("Line: " + el.getLineNumber() + " Removed index attribute from rich:columns tag when converting to c:forEach: " + el.toString());
+				attr = null;
+			}
+			break;
+		case "FOR":
+			if(el.getqName().equalsIgnoreCase("rich:tooltip")){
+				attr.setName("target");
+			}
+			break;
 		default:
 			if(attr.getValue() != null){
+				if(el.getqName().equalsIgnoreCase("RICH:COLUMNS") && attr.getName().equalsIgnoreCase("value")){
+					attr.setName("items");
+				}
 				if(attr.getValue().contains("Richfaces.hideModalPanel")){
 					attr.setValue("#{rich:component('" + getRichFacesPanelName(attr.getValue()) + "')}.hide()");
 				}else if(attr.getValue().contains("Richfaces.showModalPanel")){
@@ -412,6 +648,179 @@ public class JSFParserHandler implements ParserHandler {
 				}
 			}
 		}
+		return attr;
+	}
+	
+	/**
+	 * Converts PrimeFaces specific attributes to their new values
+	 * 
+	 * @param el
+	 * @param attr
+	 * @return
+	 */
+	private Attribute convertPrimeFacesAttribute(Element el, Attribute attr){
+		
+		//These first cases are attribute names that might be common amongst multiple tags, so we delineate them by tag name (qName) first
+		//This makes sure that we don't set an attribute name improperly for the wrong tag
+		switch(el.getqName().toUpperCase()){
+		case "A4J:SUPPORT":
+			if(attr.getName().equalsIgnoreCase("action")){
+				logger.warn("Line: " + el.getLineNumber() + " Removed action attribute from a4j:support tag, use actionListener: " + el.toString());
+				attr = null;
+				return attr;
+			}else if(attr.getName().equalsIgnoreCase("ajaxSingle")){
+				logger.warn("Line: " + el.getLineNumber() + " Removed ajaxSingle attribute from a4j:support tag: " + el.toString());
+				attr = null;
+				return attr;			
+			}
+			break;
+		case "RICH:MODALPANEL":
+			if(attr.getName().equalsIgnoreCase("onshow")){
+				attr.setName("onShow");
+				return attr;
+			}else if(attr.getName().equalsIgnoreCase("onbeforeshow")){
+				logger.warn("Line: " + el.getLineNumber() + " Changed onbeforeshow attribute to onShow for rich:modalPanel tag: " + el.toString());
+				attr.setName("onShow");
+				return attr;			
+			}
+			break;
+		case "RICH:SUGGESTIONBOX":
+			switch(attr.getName().toUpperCase()){
+			case "HEIGHT":
+				attr.setName("scrollHeight");
+				return attr;
+			case "SUGGESTACTION":
+				attr.setName("completeMethod");
+				return attr;
+			case "FOR":
+				logger.warn("Line: " + el.getLineNumber() + " Removed for attribute: " + el.toString());				
+				logger.warn("Line: " + el.getLineNumber() + " An input text box near here may need to be removed: " + el.toString());
+			case "WIDTH":
+			case "USINGSUGGESTOBJECTS":
+				logger.warn("Line: " + el.getLineNumber() + " Removed width/usingSuggestObjects attribute: " + el.toString());
+				return null;
+			}
+			break;
+		case "RICH:SIMPLETOGGLEPANEL":
+			switch(attr.getName().toUpperCase()){
+			case "OPENED":
+			case "SWITCHTYPE":
+				logger.warn("Line: " + el.getLineNumber() + " Removed opened/switchType attribute: " + el.toString());
+				return null;
+			}
+			break;
+		case "RICH:TAB":
+			switch(attr.getName().toUpperCase()){
+			case "STYLECLASS":
+				attr.setName("titleStyleClass");
+				return attr;
+			case "NAME":
+			case "LABELWIDTH":
+			case "ONTABENTER":
+			case "AJAXSINGLE":
+				logger.warn("Line: " + el.getLineNumber() + " Removed name/labelWidth/onTabEnter/ajaxSingle attribute: " + el.toString());
+				return null;
+			}
+			break;
+		case "A4J:POLL":
+			switch(attr.getName().toUpperCase()){
+			case "INTERVAL":
+				try{
+					Integer interval = Integer.parseInt(attr.getValue());
+					interval = interval/1000;
+					attr.setValue(interval.toString());
+				}catch(NumberFormatException e){
+					logger.error("Line: " + el.getLineNumber() + " Failed to change interval from milliseconds to seconds: " + el.toString());
+				}
+				return attr;
+			case "ENABLED":
+				attr.setName("stop");
+				logger.warn("Line: " + el.getLineNumber() + " The enabled attribute (changed to stop) value must be changed to the negation: " + el.toString());
+				return attr;
+			}
+			break;
+		}
+
+		
+		//then we'll go through some more generic cases
+		switch(attr.getName().toUpperCase()){
+		case "RENDER":
+		case "RERENDER":
+			attr.setName("update");
+			break;
+		case "EXECUTE":
+			attr.setName("process");
+			break;
+		case "BREAKBEFORE":
+			logger.warn("Line: " + el.getLineNumber() + " Removed breakBefore attribute from rich:column tag: " + el.toString());
+			attr = null;
+			break;
+		case "CELLPADDING":
+		case "CELLSPACING":
+		case "BORDER":
+		case "HEADERCLASS":
+		case "WIDTH":
+			logger.warn("Line: " + el.getLineNumber() + " Removed cellpadding/spacing/border/headerClass/width attribute from rich:dataTable tag: " + el.toString());
+			attr = null;
+			break;
+		case "ROWCLASSES":
+			if(el.getqName().equalsIgnoreCase("rich:datatable"))
+				attr.setName("rowStyleClass");
+			else if(el.getqName().equalsIgnoreCase("rich:dataGrid")){
+				logger.warn("Line: " + el.getLineNumber() + " Removed rowClasses attribute from rich:dataGrid tag: " + el.toString());
+				attr = null;				
+			}
+			break;
+		case "COLUMNCLASSES":
+			if(el.getqName().equalsIgnoreCase("rich:dataGrid")){
+				logger.warn("Line: " + el.getLineNumber() + " Removed columnClasses attribute from rich:dataGrid tag: " + el.toString());
+				attr = null;				
+			}
+			break;
+		case "AJAXRENDERED":
+			if(el.getqName().equalsIgnoreCase("a4j:outputPanel"))
+				attr.setName("autoUpdate");
+			break;
+		case "EVENT":
+			if(el.getqName().equalsIgnoreCase("a4j:support"))
+				attr.setValue(attr.getValue().replace("on", ""));
+			break;
+		case "AUTOSIZED":
+			attr.setName("responsive");
+			break;
+		case "MOVEABLE":
+			attr.setName("draggable");
+			break;
+		case "TOP":
+			attr.setName("position");
+			attr.setValue("top");
+			logger.warn("Line: " + el.getLineNumber() + " Replaced top attribute with position=\"top\": " + el.toString());
+			break;
+		case "DIRECTION":
+			logger.warn("Line: " + el.getLineNumber() + " Removed direction attribute: " + el.toString());
+			attr = null;
+			break;
+		case "ONCHANGED":
+			attr.setName("onchange");
+			break;
+		case "LABEL":
+			attr.setName("title");
+			break;
+		default:
+			if(el.getqName().equalsIgnoreCase("rich:modalPanel") && attr.getName().equalsIgnoreCase("id")){
+				print(" widgetVar=\"" + attr.getValue() + "\" ");
+			}
+			if(attr.getValue().contains("Richfaces.hideModalPanel")){
+				attr.setValue(getRichFacesPanelName(attr.getValue()) + ".hide()");
+			}else if(attr.getValue().contains("Richfaces.showModalPanel")){
+				attr.setValue("#{rich:component('" + getRichFacesPanelName(attr.getValue()) + ".show()");
+			}else if(attr.getValue().contains("#{rich:component(") && attr.getValue().contains("hide")){
+				attr.setValue(getRichFacesPanelName(attr.getValue()) + ".hide()");				
+			}else if(attr.getValue().contains("#{rich:component(") && attr.getValue().contains("show")){
+				attr.setValue(getRichFacesPanelName(attr.getValue()) + ".show()");				
+			}
+		}
+		
 		return attr;
 	}
 	
