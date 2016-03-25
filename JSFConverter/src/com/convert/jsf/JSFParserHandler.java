@@ -23,9 +23,11 @@ public class JSFParserHandler implements ParserHandler {
 	private Map<String, String> uris = new HashMap<String, String>();
 	private boolean includeRichFacesConversion = false;
 	private boolean includePrimeFacesConversion = false;
+	private boolean includedFile = false;
 	private boolean gotFirstTag = false;
 	private boolean gotHeadTag = false;
 	private boolean gotFirstStatus = false;
+	private boolean declaredRFURI = false;
 	private File outputDir;
 	private BufferedWriter output;
 	
@@ -34,12 +36,14 @@ public class JSFParserHandler implements ParserHandler {
 		gotHeadTag = false;
 		gotFirstTag = false;
 		gotFirstStatus = false;
+		declaredRFURI = false;
 		uris = new HashMap<String, String>();
 		
 		
-		String xhtmlFile = filename.replace(".jsp", ".xhtml");
-		File file = new File(outputDir.getAbsolutePath() + "\\" + xhtmlFile);
+		File file = new File(outputDir.getAbsolutePath() + "\\" + filename);
 		try {
+			File dir = new File(outputDir.getAbsolutePath());
+			dir.mkdirs();
 			file.createNewFile();
 			output = new BufferedWriter(new FileWriter(file));
 		} catch (IOException e) {
@@ -49,8 +53,14 @@ public class JSFParserHandler implements ParserHandler {
 	}
 	
 	public void printHTMLStarter(){
-		print("<!DOCTYPE html>\n");
-		print("<html lang=\"en\" \n"
+
+		if(includedFile)
+			print("<ui:composition ");
+		else{
+			print("<!DOCTYPE html>\n");
+			print("<html ");
+		}
+		print("lang=\"en\" \n"
 				+ "     xmlns=\"http://www.w3.org/1999/xhtml\"\n"
 				+ "     xmlns:c=\"http://java.sun.com/jsp/jstl/core\"\n");
 		
@@ -71,7 +81,7 @@ public class JSFParserHandler implements ParserHandler {
 			}
 		}
 		
-		print("     xmlns:ui=\"http://java.sun.com/jsf/facelets\">");
+		print("     xmlns:ui=\"http://java.sun.com/jsf/facelets\">\n");
 		
 	}
 
@@ -85,9 +95,11 @@ public class JSFParserHandler implements ParserHandler {
 				String prefix = "";
 				String value = "";
 				for(Attribute attr : el.getAttrs()){
-					if(attr.getName().equals("prefix"))
+					if(attr.getName().equals("prefix")){
 						prefix = attr.getValue();
-					else if(attr.getName().equals("uri"))
+						if(prefix.equalsIgnoreCase("rich"))
+							declaredRFURI = true;
+					}else if(attr.getName().equals("uri"))
 						value = attr.getValue();
 				}
 				uris.put(prefix, value);
@@ -101,12 +113,22 @@ public class JSFParserHandler implements ParserHandler {
 		case DOCTYPE:
 			break;
 		case SCRIPT:
+			if(!gotFirstTag){
+				printHTMLStarter();
+				gotFirstTag = true;
+			}
+			
 			if(el.getAttrs() != null){
 				boolean foundJavaScriptType = false;
 				for(Attribute attr : el.getAttrs()){
 					if(attr.getName().equalsIgnoreCase("type") && attr.getValue().contains("javascript")){
 						foundJavaScriptType = true;
 						break;
+					}else if(attr.getValue().contains("<%=")){
+						String attrVal = attr.getValue();
+						if(attrVal.endsWith(".jsf"))
+							attrVal = attrVal.replace(".jsf", ".xhtml");
+						attr.setValue("#{request.contextPath}" + attrVal.substring(attrVal.indexOf("%>")+2));						
 					}
 				}
 				if(foundJavaScriptType){
@@ -115,6 +137,7 @@ public class JSFParserHandler implements ParserHandler {
 				}
 			}else{
 				print(el.toString());	
+				print("//<![CDATA[");
 			}
 			break;
 		default:
@@ -214,12 +237,19 @@ public class JSFParserHandler implements ParserHandler {
 				}else if(includePrimeFacesConversion){			
 					
 					switch(el.getqName().toUpperCase()){
+					case "H:COLUMN":
+						if(declaredRFURI){
+							print("<p:column ");
+							printAttrsAndEnd(el);
+						}else
+							print(el.toString());
+						break;
 					case "A4J:JSFUNCTION":
 						print("<p:remoteCommand ");
 						printAttrsAndEnd(el);
 						break;
 					case "RICH:MODALPANEL":
-						print("<p:dialog modal=\"true\" ");
+						print("<p:dialog modal=\"true\" resizable=\"false\" ");
 						printAttrsAndEnd(el);
 						break;		
 					case "A4J:REGION":
@@ -248,8 +278,44 @@ public class JSFParserHandler implements ParserHandler {
 						break;
 					case "A4J:STATUS":
 						if(!gotFirstStatus){
-							print("<p:ajaxStatus ");
-							printAttrsAndEnd(el);
+							if(el.isOpenedAndClosed()){
+								gotFirstStatus = true;
+								print("<p:ajaxStatus>\n");
+								if(el.getAttrs() != null){
+									String startText = "";
+									String startStyle = "";
+									String stopText = "";
+									for(Attribute attr : el.getAttrs()){
+										if(attr.getName().equalsIgnoreCase("startText")){
+											startText = attr.getValue();
+										}else if(attr.getName().equalsIgnoreCase("stopText")){
+											stopText = attr.getValue();
+										}else if(attr.getName().equalsIgnoreCase("startStyleClass")){
+											startStyle = attr.getValue();
+										}
+									}
+									
+									if(!startText.equals("")){
+										print("<f:facet name=\"start\">\n");
+										print("<h:outputText value=\"" + startText + "\" ");
+										if(!startStyle.equals("")){
+											print(" styleClass=\"" + startStyle + "\"");
+										}
+										print("/>\n");
+										print("</f:facet>\n");
+									}
+									if(!stopText.equals("")){
+										print("<f:facet name=\"complete\">\n");
+										print("<h:outputText value=\"" + startText + "/>\n");
+										print("</f:facet>\n");										
+									}
+								}
+								print("</p:ajaxStatus>\n");
+								
+							}else{
+								print("<p:ajaxStatus ");
+								printAttrsAndEnd(el);
+							}
 						}else{
 							logger.warn("Line: " + el.getLineNumber() + " Removed additional a4j:status since only one is allowed (blockUI is alternative): " + el.toString());							
 						}
@@ -275,6 +341,11 @@ public class JSFParserHandler implements ParserHandler {
 						break;
 					case "RICH:TABPANEL":
 						print("<p:tabView ");
+						printAttrsAndEnd(el);
+						break;
+					case "RICH:TOOLTIP":
+						//case changed on this one
+						print("<p:tooltip");
 						printAttrsAndEnd(el);
 						break;
 					default:
@@ -364,6 +435,12 @@ public class JSFParserHandler implements ParserHandler {
 				}else if(includePrimeFacesConversion){			
 					
 					switch(el.getqName().toUpperCase()){
+					case "H:COLUMN":
+						if(declaredRFURI)
+							print("</p:column>");
+						else
+							print("</" + el.getqName() + ">");
+						break;
 					case "A4J:JSFUNCTION":
 						print("</p:remoteCommand>");
 						break;
@@ -411,6 +488,10 @@ public class JSFParserHandler implements ParserHandler {
 					case "RICH:TABPANEL":
 						print("</p:tabView>");
 						break;
+					case "RICH:TOOLTIP":
+						//case changed on this one
+						print("</p:tooltip>");
+						break;
 					default:
 						if(el.getqName().startsWith("rich:")){
 							el.setqName(el.getqName().replaceFirst("rich:", "p:"));
@@ -440,7 +521,10 @@ public class JSFParserHandler implements ParserHandler {
 	
 	@Override
 	public void endFile(String filename){
-		print("</html>");
+		if(includedFile)
+			print("</ui:composition>");
+		else
+			print("</html>");
 		try {
 			output.close();
 		} catch (IOException e) {
@@ -463,6 +547,14 @@ public class JSFParserHandler implements ParserHandler {
 
 	public void setIncludePrimeFacesConversion(boolean includePrimeFacesConversion) {
 		this.includePrimeFacesConversion = includePrimeFacesConversion;
+	}
+
+	public boolean isIncludedFile() {
+		return includedFile;
+	}
+
+	public void setIncludedFile(boolean includedFile) {
+		this.includedFile = includedFile;
 	}
 
 	private void print(String s){
@@ -525,7 +617,7 @@ public class JSFParserHandler implements ParserHandler {
 				Attribute convAttr = convertAttribute(el, attr);
 				
 				if(convAttr != null)
-					print(" " + convAttr.getName() + "=\"" + convAttr.getValue() + "\"");
+					print(" " + convAttr.getName() + "=\"" + replaceSpecialCharacters(convAttr.getValue()) + "\"");
 			}
 		}
 		if(el.getTagType().equals(TAG_TYPE.COMMENT))
@@ -546,10 +638,12 @@ public class JSFParserHandler implements ParserHandler {
 	 * @return
 	 */
 	private Attribute convertAttribute(Element el, Attribute attr){
-		switch(attr.getName().toUpperCase()){
+		switch(attr.getName().trim().toUpperCase()){
 
 		case "HREF":
-			if(el.getqName().equalsIgnoreCase("a") && attr.getValue().contains("<%=")){
+		case "SRC":
+			if((el.getqName().equalsIgnoreCase("a") || el.getqName().equalsIgnoreCase("script"))
+					&& attr.getValue().contains("<%=")){
 				String attrVal = attr.getValue();
 				if(attrVal.endsWith(".jsf"))
 					attrVal = attrVal.replace(".jsf", ".xhtml");
@@ -575,7 +669,7 @@ public class JSFParserHandler implements ParserHandler {
 	 */
 	private Attribute convertRichFacesAttribute(Element el, Attribute attr){
 		
-		switch(attr.getName().toUpperCase()){
+		switch(attr.getName().trim().toUpperCase()){
 		case "PROCESS":
 			attr.setName("execute");
 			break;
@@ -610,6 +704,7 @@ public class JSFParserHandler implements ParserHandler {
 				}
 				attr.setValue(attrVal);
 			}
+			break;
 		case "RENDERED":
 			if(attr.getValue() != null){
 				if(attr.getValue().contains("<="))
@@ -625,6 +720,7 @@ public class JSFParserHandler implements ParserHandler {
 				if(attr.getValue().contains("||"))
 					attr.setValue(attr.getValue().replace("||", "or"));
 			}
+			break;
 		case "INDEX":
 			if(el.getqName().equalsIgnoreCase("RICH:COLUMNS")){
 				logger.warn("Line: " + el.getLineNumber() + " Removed index attribute from rich:columns tag when converting to c:forEach: " + el.toString());
@@ -662,7 +758,7 @@ public class JSFParserHandler implements ParserHandler {
 		
 		//These first cases are attribute names that might be common amongst multiple tags, so we delineate them by tag name (qName) first
 		//This makes sure that we don't set an attribute name improperly for the wrong tag
-		switch(el.getqName().toUpperCase()){
+		switch(el.getqName().trim().toUpperCase()){
 		case "A4J:SUPPORT":
 			if(attr.getName().equalsIgnoreCase("action")){
 				logger.warn("Line: " + el.getLineNumber() + " Removed action attribute from a4j:support tag, use actionListener: " + el.toString());
@@ -743,10 +839,26 @@ public class JSFParserHandler implements ParserHandler {
 
 		
 		//then we'll go through some more generic cases
-		switch(attr.getName().toUpperCase()){
+		switch(attr.getName().trim().toUpperCase()){
 		case "RENDER":
 		case "RERENDER":
 			attr.setName("update");
+			break;
+		case "RENDERED":
+			if(attr.getValue() != null){
+				if(attr.getValue().contains("<="))
+					attr.setValue(attr.getValue().replace("<=", "le"));
+				if(attr.getValue().contains(">="))
+					attr.setValue(attr.getValue().replace(">=", "ge"));
+				if(attr.getValue().contains("<"))
+					attr.setValue(attr.getValue().replace("<", "lt"));
+				if(attr.getValue().contains(">"))
+					attr.setValue(attr.getValue().replace(">", "gt"));
+				if(attr.getValue().contains("&&"))
+					attr.setValue(attr.getValue().replace("&&", "and"));
+				if(attr.getValue().contains("||"))
+					attr.setValue(attr.getValue().replace("||", "or"));
+			}
 			break;
 		case "EXECUTE":
 			attr.setName("process");
@@ -760,8 +872,18 @@ public class JSFParserHandler implements ParserHandler {
 		case "BORDER":
 		case "HEADERCLASS":
 		case "WIDTH":
-			logger.warn("Line: " + el.getLineNumber() + " Removed cellpadding/spacing/border/headerClass/width attribute from rich:dataTable tag: " + el.toString());
-			attr = null;
+			if(!el.getqName().equalsIgnoreCase("rich:modalPanel")){
+				if(attr.getValue().equalsIgnoreCase("100%")){
+					attr.setName("class");
+					attr.setValue("widthFull");
+				}else{
+					logger.warn("Line: " + el.getLineNumber() + " Removed cellpadding/spacing/border/headerClass/width attribute from rich:dataTable tag: " + el.toString());
+					attr = null;
+				}
+			}else{
+				logger.warn("Line: " + el.getLineNumber() + " Removed cellpadding/spacing/border/headerClass/width attribute from rich:dataTable tag: " + el.toString());
+				attr = null;
+			}
 			break;
 		case "ROWCLASSES":
 			if(el.getqName().equalsIgnoreCase("rich:datatable"))
@@ -810,14 +932,24 @@ public class JSFParserHandler implements ParserHandler {
 			if(el.getqName().equalsIgnoreCase("rich:modalPanel") && attr.getName().equalsIgnoreCase("id")){
 				print(" widgetVar=\"" + attr.getValue() + "\" ");
 			}
-			if(attr.getValue().contains("Richfaces.hideModalPanel")){
-				attr.setValue(getRichFacesPanelName(attr.getValue()) + ".hide()");
-			}else if(attr.getValue().contains("Richfaces.showModalPanel")){
-				attr.setValue("#{rich:component('" + getRichFacesPanelName(attr.getValue()) + ".show()");
-			}else if(attr.getValue().contains("#{rich:component(") && attr.getValue().contains("hide")){
-				attr.setValue(getRichFacesPanelName(attr.getValue()) + ".hide()");				
-			}else if(attr.getValue().contains("#{rich:component(") && attr.getValue().contains("show")){
-				attr.setValue(getRichFacesPanelName(attr.getValue()) + ".show()");				
+			
+			if(attr.getValue().contains("rich:component") || attr.getValue().contains("Richfaces")){
+				String[] values = attr.getValue().split(";");
+				String result = "";
+				for(int i = 0; i < values.length; i++){
+					if(values[i].contains("Richfaces.hideModalPanel")){
+						result += "PF('" + getRichFacesPanelName(values[i]) + "')" + ".hide();";
+					}else if(values[i].contains("Richfaces.showModalPanel")){
+						result += "PF('" + getRichFacesPanelName(values[i]) + "')" + ".show();";
+					}else if(values[i].contains("#{rich:component(") && values[i].contains("hide")){
+						result += "PF('" + getRichFacesPanelName(values[i]) + "')" + ".hide();";				
+					}else if(values[i].contains("#{rich:component(") && values[i].contains("show")){
+						result += "PF('" + getRichFacesPanelName(values[i]) + "')" + ".show();";				
+					}else{
+						result += values[i] + ";";
+					}
+				}
+				attr.setValue(result);
 			}
 		}
 		
@@ -847,6 +979,11 @@ public class JSFParserHandler implements ParserHandler {
 		s = s.replace("&gt;", "&#62;");
 		s = s.replace("&amp;", "&#38;");
 		s = s.replace("&copy;", "&#169;");
+		return s;
+	}
+	
+	private String replaceSpecialCharacters(String s){
+		s = s.replace("&", "&amp;");		
 		return s;
 	}
 
