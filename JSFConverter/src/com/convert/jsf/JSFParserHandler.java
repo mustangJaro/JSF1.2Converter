@@ -835,6 +835,28 @@ public class JSFParserHandler implements ParserHandler {
 				return attr;
 			}
 			break;
+		case "A4J:COMMANDBUTTON":
+			switch(attr.getName().toUpperCase()){
+			case "IMAGE":
+				if(attr.getValue().contains("add")){
+					attr.setName("value");
+					attr.setValue("Add");
+					//print additional attribute for icon
+					print(" icon=\"customIconPosition fa fa-fw fa-plus\"");
+				}else if(attr.getValue().contains("edit")){
+					attr.setName("value");
+					attr.setValue("Edit");
+					//print additional attribute for icon
+					print(" icon=\"customIconPosition fa fa-fw fa-edit\"");					
+				}else if(attr.getValue().contains("delete")){
+					attr.setName("value");
+					attr.setValue("Delete");
+					//print additional attribute for icon
+					print(" icon=\"customIconPosition fa fa-fw fa-remove\"");
+					
+				}
+				return attr;
+			}
 		}
 
 		
