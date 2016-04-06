@@ -940,6 +940,11 @@ public class JSFParserHandler implements ParserHandler {
 				}
 				return attr;
 			}
+		case "RICH:DATATABLE":
+			if(attr.getName().equalsIgnoreCase("rowKeyVar")){
+				attr.setName("rowIndexVar");
+			}
+			break;
 		}
 
 		
