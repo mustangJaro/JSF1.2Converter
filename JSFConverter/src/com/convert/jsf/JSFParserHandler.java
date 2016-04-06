@@ -150,6 +150,66 @@ public class JSFParserHandler implements ParserHandler {
 				print(result);
 				gotHeadTag = true;
 				break;
+			case "BR":
+				el.setOpenedAndClosed(true);
+				print(el.toString());
+				break;
+			case "SCRIPT":
+				if(el.getAttrs() != null){
+					boolean foundJavaScriptType = false;
+					for(Attribute attr : el.getAttrs()){
+						if(attr.getName().equalsIgnoreCase("type") && attr.getValue().contains("javascript")){
+							foundJavaScriptType = true;
+							break;
+						}else if(attr.getValue().contains("<%=")){
+							String attrVal = attr.getValue();
+							if(attrVal.endsWith(".jsf"))
+								attrVal = attrVal.replace(".jsf", ".xhtml");
+							attr.setValue("#{request.contextPath}" + attrVal.substring(attrVal.indexOf("%>")+2));						
+						}
+					}
+					if(foundJavaScriptType){
+						print(el.toString());
+						print("//<![CDATA[");
+					}
+				}else{
+					print(el.toString());	
+					print("//<![CDATA[");
+				}
+				break;
+			case "CCDS:MAIN":
+				//wrap this with a JSF head tag, immediately close it and then create the JSF body tag
+				if(!gotHeadTag){
+					print("<h:head>\n");
+				}
+				el.setOpenedAndClosed(true);
+				print(el.toString() + "\n");
+				if(!gotHeadTag){
+					print("</h:head>\n");
+				}
+				print("<h:body>\n");
+				break;
+			case "JSP:INCLUDE":
+				print("<ui:include ");
+				if(el.getAttrs() != null){
+					for(Attribute attr : el.getAttrs()){
+						if(attr.getName().equalsIgnoreCase("page")){
+							if(attr.getValue().endsWith(".jsp"))
+								attr.setValue(attr.getValue().replace(".jsp", ".xhtml"));
+							print(" src=\"" + attr.getValue() + "\"");
+						}else{
+							print(attr.toString());
+						}
+					}
+				}
+				if(el.isOpenedAndClosed())
+					print("/");
+				print(">");		
+				break;
+			case "JSP:PARAM":
+				print("<ui:param ");
+				printAttrsAndEnd(el);
+				break;
 			default:
 				if(!gotFirstTag){
 					printHTMLStarter();
@@ -349,18 +409,19 @@ public class JSFParserHandler implements ParserHandler {
 						printAttrsAndEnd(el);
 						break;
 					default:
+						String qName = el.getqName();
 						if(el.getqName().startsWith("rich:")){
-							el.setqName(el.getqName().replaceFirst("rich:", "p:"));
+							qName = el.getqName().replaceFirst("rich:", "p:");
 						}else if(el.getqName().startsWith("a4j:")){
-							el.setqName(el.getqName().replaceFirst("a4j:", "p:"));
+							qName = el.getqName().replaceFirst("a4j:", "p:");
 						}
 						
 						print("<");
 						if(el.getTagType().equals(TAG_TYPE.COMMENT)){
 							print("!--");
-							print(el.getqName().replace("--", ""));
+							print(qName.replace("--", ""));
 						}else{
-							print(el.getqName());
+							print(qName);
 						}
 						printAttrsAndEnd(el);
 					}
@@ -384,6 +445,18 @@ public class JSFParserHandler implements ParserHandler {
 			case "SCRIPT":
 				print("//]]>\n");
 				print("</" + el.getqName() + ">");
+				break;
+			case "CCDS:MAIN":
+				print("<ccds:devDBName/>\n");
+				print("</h:body>\n");
+				break;
+			case "JSP:INCLUDE":
+				if(!el.isOpenedAndClosed())
+					print("</ui:include>");
+				break;
+			case "JSP:PARAM":
+				if(!el.isOpenedAndClosed())
+					print("</ui:param>");
 				break;
 			default:
 				//RichFaces specific conversion changes go here
@@ -708,17 +781,17 @@ public class JSFParserHandler implements ParserHandler {
 		case "RENDERED":
 			if(attr.getValue() != null){
 				if(attr.getValue().contains("<="))
-					attr.setValue(attr.getValue().replace("<=", "le"));
+					attr.setValue(attr.getValue().replace("<=", " le "));
 				if(attr.getValue().contains(">="))
-					attr.setValue(attr.getValue().replace(">=", "ge"));
+					attr.setValue(attr.getValue().replace(">=", " ge "));
 				if(attr.getValue().contains("<"))
-					attr.setValue(attr.getValue().replace("<", "lt"));
+					attr.setValue(attr.getValue().replace("<", " lt "));
 				if(attr.getValue().contains(">"))
-					attr.setValue(attr.getValue().replace(">", "gt"));
+					attr.setValue(attr.getValue().replace(">", " gt "));
 				if(attr.getValue().contains("&&"))
-					attr.setValue(attr.getValue().replace("&&", "and"));
+					attr.setValue(attr.getValue().replace("&&", " and "));
 				if(attr.getValue().contains("||"))
-					attr.setValue(attr.getValue().replace("||", "or"));
+					attr.setValue(attr.getValue().replace("||", " or "));
 			}
 			break;
 		case "INDEX":
@@ -761,8 +834,8 @@ public class JSFParserHandler implements ParserHandler {
 		switch(el.getqName().trim().toUpperCase()){
 		case "A4J:SUPPORT":
 			if(attr.getName().equalsIgnoreCase("action")){
-				logger.warn("Line: " + el.getLineNumber() + " Removed action attribute from a4j:support tag, use actionListener: " + el.toString());
-				attr = null;
+				logger.warn("Line: " + el.getLineNumber() + " Renamed 'action' attribute to 'listener' on a4j:support (p:ajax) tag, update method to take event attribute: " + el.toString());
+				attr.setName("listener");
 				return attr;
 			}else if(attr.getName().equalsIgnoreCase("ajaxSingle")){
 				logger.warn("Line: " + el.getLineNumber() + " Removed ajaxSingle attribute from a4j:support tag: " + el.toString());
@@ -848,6 +921,16 @@ public class JSFParserHandler implements ParserHandler {
 					attr.setValue("Edit");
 					//print additional attribute for icon
 					print(" icon=\"customIconPosition fa fa-fw fa-edit\"");					
+				}else if(attr.getValue().contains("view")){
+					attr.setName("value");
+					attr.setValue("View");
+					//print additional attribute for icon
+					print(" icon=\"customIconPosition fa fa-fw fa-search\"");					
+				}else if(attr.getValue().contains("copy")){
+					attr.setName("value");
+					attr.setValue("Copy");
+					//print additional attribute for icon
+					print(" icon=\"customIconPosition fa fa-fw fa-copy\"");					
 				}else if(attr.getValue().contains("delete")){
 					attr.setName("value");
 					attr.setValue("Delete");
@@ -898,12 +981,13 @@ public class JSFParserHandler implements ParserHandler {
 				if(attr.getValue().equalsIgnoreCase("100%")){
 					attr.setName("class");
 					attr.setValue("widthFull");
-				}else{
+					logger.warn("Line: " + el.getLineNumber() + " Added class attribute, which may be duplicated; please double-check");
+				}else if(el.getqName().equalsIgnoreCase("RICH:DATATABLE")){
 					logger.warn("Line: " + el.getLineNumber() + " Removed cellpadding/spacing/border/headerClass/width attribute from rich:dataTable tag: " + el.toString());
 					attr = null;
 				}
 			}else{
-				logger.warn("Line: " + el.getLineNumber() + " Removed cellpadding/spacing/border/headerClass/width attribute from rich:dataTable tag: " + el.toString());
+				logger.warn("Line: " + el.getLineNumber() + " Removed cellpadding/spacing/border/headerClass/width attribute from rich:modalPanel tag: " + el.toString());
 				attr = null;
 			}
 			break;
