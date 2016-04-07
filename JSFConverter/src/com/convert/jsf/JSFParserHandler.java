@@ -121,12 +121,12 @@ public class JSFParserHandler implements ParserHandler {
 			if(el.getAttrs() != null){
 				boolean foundJavaScriptType = false;
 				for(Attribute attr : el.getAttrs()){
-					if(attr.getName().equalsIgnoreCase("type") && attr.getValue().contains("javascript")){
+					if(attr.getName().trim().equalsIgnoreCase("type") && attr.getValue().contains("javascript")){
 						foundJavaScriptType = true;
 						break;
 					}else if(attr.getValue().contains("<%=")){
 						String attrVal = attr.getValue();
-						if(attrVal.endsWith(".jsf"))
+						if(attrVal.contains(".jsf"))
 							attrVal = attrVal.replace(".jsf", ".xhtml");
 						attr.setValue("#{request.contextPath}" + attrVal.substring(attrVal.indexOf("%>")+2));						
 					}
@@ -158,12 +158,12 @@ public class JSFParserHandler implements ParserHandler {
 				if(el.getAttrs() != null){
 					boolean foundJavaScriptType = false;
 					for(Attribute attr : el.getAttrs()){
-						if(attr.getName().equalsIgnoreCase("type") && attr.getValue().contains("javascript")){
+						if(attr.getName().trim().equalsIgnoreCase("type") && attr.getValue().contains("javascript")){
 							foundJavaScriptType = true;
 							break;
 						}else if(attr.getValue().contains("<%=")){
 							String attrVal = attr.getValue();
-							if(attrVal.endsWith(".jsf"))
+							if(attrVal.contains(".jsf"))
 								attrVal = attrVal.replace(".jsf", ".xhtml");
 							attr.setValue("#{request.contextPath}" + attrVal.substring(attrVal.indexOf("%>")+2));						
 						}
@@ -194,7 +194,7 @@ public class JSFParserHandler implements ParserHandler {
 				if(el.getAttrs() != null){
 					for(Attribute attr : el.getAttrs()){
 						if(attr.getName().equalsIgnoreCase("page")){
-							if(attr.getValue().endsWith(".jsp"))
+							if(attr.getValue().contains(".jsp"))
 								attr.setValue(attr.getValue().replace(".jsp", ".xhtml"));
 							print(" src=\"" + attr.getValue() + "\"");
 						}else{
@@ -715,10 +715,10 @@ public class JSFParserHandler implements ParserHandler {
 
 		case "HREF":
 		case "SRC":
-			if((el.getqName().equalsIgnoreCase("a") || el.getqName().equalsIgnoreCase("script"))
+			if((el.getqName().trim().equalsIgnoreCase("a") || el.getqName().trim().equalsIgnoreCase("script"))
 					&& attr.getValue().contains("<%=")){
 				String attrVal = attr.getValue();
-				if(attrVal.endsWith(".jsf"))
+				if(attrVal.contains(".jsf"))
 					attrVal = attrVal.replace(".jsf", ".xhtml");
 				attr.setValue("#{request.contextPath}" + attrVal.substring(attrVal.indexOf("%>")+2));
 			}
