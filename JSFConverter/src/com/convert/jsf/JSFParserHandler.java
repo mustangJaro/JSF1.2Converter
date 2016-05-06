@@ -304,6 +304,24 @@ public class JSFParserHandler implements ParserHandler {
 						}else
 							print(el.toString());
 						break;
+					case "H:INPUTTEXT":
+						print("<p:inputText ");
+						printAttrsAndEnd(el);
+						break;
+					case "H:SELECTONEMENU":
+						print("<p:selectOneMenu ");
+						if(el.getAttrs() != null && el.getAttrs().size() > 0){
+							for(Attribute attr : el.getAttrs()){
+								if(attr.getName().equalsIgnoreCase("styleClass")){
+									if(attr.getValue().equalsIgnoreCase("inputSelect"))
+										attr.setValue("width100");
+									else
+										attr.setValue(attr.getValue() + " width100");
+								}
+							}
+						}
+						printAttrsAndEnd(el);
+						break;
 					case "A4J:JSFUNCTION":
 						print("<p:remoteCommand ");
 						printAttrsAndEnd(el);
@@ -513,6 +531,12 @@ public class JSFParserHandler implements ParserHandler {
 							print("</p:column>");
 						else
 							print("</" + el.getqName() + ">");
+						break;
+					case "H:INPUTTEXT":
+						print("</p:inputText>");
+						break;
+					case "H:SELECTONEMENU":
+						print("</p:selectOneMenu>");
 						break;
 					case "A4J:JSFUNCTION":
 						print("</p:remoteCommand>");
