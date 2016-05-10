@@ -67,19 +67,18 @@ public class JSFParserHandler implements ParserHandler {
 		for(String key : uris.keySet()){
 			if(!key.equalsIgnoreCase("c")){
 				if(includePrimeFacesConversion){
-					//remove a4j reference and convert rich reference to 'p'
-					if(!key.equalsIgnoreCase("a4j")){
-						if(key.equalsIgnoreCase("rich")){
-							print("     xmlns:p=\"http://primefaces.org/ui\"\n");							
-						}else{
-							print("     xmlns:" + key + "=\"" + uris.get(key) + "\"\n");							
-						}
+					//remove a4j and rich references
+					if(!key.equalsIgnoreCase("a4j") && !key.equalsIgnoreCase("rich")){
+						print("     xmlns:" + key + "=\"" + uris.get(key) + "\"\n");							
 					}
 				}else{
 					print("     xmlns:" + key + "=\"" + uris.get(key) + "\"\n");
 				}
 			}
 		}
+		
+		if(includePrimeFacesConversion)
+			print("     xmlns:p=\"http://primefaces.org/ui\"\n");
 		
 		print("     xmlns:ui=\"http://java.sun.com/jsf/facelets\">\n");
 		
@@ -310,15 +309,27 @@ public class JSFParserHandler implements ParserHandler {
 						break;
 					case "H:SELECTONEMENU":
 						print("<p:selectOneMenu ");
+						boolean foundStyle = false;
 						if(el.getAttrs() != null && el.getAttrs().size() > 0){
 							for(Attribute attr : el.getAttrs()){
 								if(attr.getName().equalsIgnoreCase("styleClass")){
-									if(attr.getValue().equalsIgnoreCase("inputSelect"))
-										attr.setValue("width100");
-									else
+									if(attr.getValue().contains("inputSelect")){
+										attr.setValue(attr.getValue().replace("inputSelect", "width100"));
+										foundStyle = true;
+										break;
+									}else{
 										attr.setValue(attr.getValue() + " width100");
+										foundStyle = true;
+										break;
+									}
 								}
 							}
+						}
+						if(!foundStyle){
+							Attribute attr = new Attribute();
+							attr.setName("styleClass");
+							attr.setValue("width100");
+							el.getAttrs().add(attr);
 						}
 						printAttrsAndEnd(el);
 						break;
@@ -424,6 +435,10 @@ public class JSFParserHandler implements ParserHandler {
 					case "RICH:TOOLTIP":
 						//case changed on this one
 						print("<p:tooltip");
+						printAttrsAndEnd(el);
+						break;
+					case "T:INPUTCALENDAR":
+						print("<p:calendar ");
 						printAttrsAndEnd(el);
 						break;
 					default:
@@ -589,6 +604,9 @@ public class JSFParserHandler implements ParserHandler {
 						//case changed on this one
 						print("</p:tooltip>");
 						break;
+					case "T:INPUTCALENDAR":
+						print("</p:calendar>");
+						break;
 					default:
 						if(el.getqName().startsWith("rich:")){
 							el.setqName(el.getqName().replaceFirst("rich:", "p:"));
@@ -742,10 +760,10 @@ public class JSFParserHandler implements ParserHandler {
 			if((el.getqName().trim().equalsIgnoreCase("a") || el.getqName().trim().equalsIgnoreCase("script"))
 					&& attr.getValue().contains("<%=")){
 				String attrVal = attr.getValue();
-				if(attrVal.contains(".jsf"))
-					attrVal = attrVal.replace(".jsf", ".xhtml");
 				attr.setValue("#{request.contextPath}" + attrVal.substring(attrVal.indexOf("%>")+2));
 			}
+			if(attr.getValue().contains(".jsf"))
+				attr.setValue(attr.getValue().replace(".jsf", ".xhtml"));
 			break;
 		}
 		
@@ -892,6 +910,12 @@ public class JSFParserHandler implements ParserHandler {
 			case "USINGSUGGESTOBJECTS":
 				logger.warn("Line: " + el.getLineNumber() + " Removed width/usingSuggestObjects attribute: " + el.toString());
 				return null;
+			case "NOTHINGLABEL":
+				attr.setName("emptyMessage");
+				return attr;
+			case "FETCHVALUE":
+				attr.setName("itemValue");
+				return attr;
 			}
 			break;
 		case "RICH:SIMPLETOGGLEPANEL":
@@ -967,6 +991,16 @@ public class JSFParserHandler implements ParserHandler {
 		case "RICH:DATATABLE":
 			if(attr.getName().equalsIgnoreCase("rowKeyVar")){
 				attr.setName("rowIndexVar");
+			}
+			break;
+		case "T:INPUTCALENDAR":
+			switch(attr.getName().toUpperCase()){
+			case "POPUPBUTTONSTRING":
+			case "RENDERASPOPUP":
+				return null;
+			case "POPUPDATEFORMAT":
+				attr.setValue("pattern");
+				return attr;
 			}
 			break;
 		}
