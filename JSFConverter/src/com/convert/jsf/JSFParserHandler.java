@@ -312,7 +312,7 @@ public class JSFParserHandler implements ParserHandler {
 						boolean foundStyle = false;
 						if(el.getAttrs() != null && el.getAttrs().size() > 0){
 							for(Attribute attr : el.getAttrs()){
-								if(attr.getName().equalsIgnoreCase("styleClass")){
+								if(attr.getName().trim().equalsIgnoreCase("styleClass")){
 									if(attr.getValue().contains("inputSelect")){
 										attr.setValue(attr.getValue().replace("inputSelect", "width100"));
 										foundStyle = true;
