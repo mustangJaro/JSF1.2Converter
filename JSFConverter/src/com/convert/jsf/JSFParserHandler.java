@@ -999,7 +999,7 @@ public class JSFParserHandler implements ParserHandler {
 			case "RENDERASPOPUP":
 				return null;
 			case "POPUPDATEFORMAT":
-				attr.setValue("pattern");
+				attr.setName("pattern");
 				return attr;
 			}
 			break;
